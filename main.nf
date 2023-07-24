@@ -16,6 +16,7 @@ process fastQC {
         
     """
     #!/bin/bash 
+    set -euxo pipefail
     chmod -R 777 nextflow-bin/fastqc_bin
     nextflow-bin/fastqc_bin/fastqc $fastq 
     #mv ${fastq.getBaseName(2)}_fastqc/fastqc_data.txt ${fastq.getBaseName(2)}_fastqc/${fastq.getBaseName(2)}_fastqc_data.txt
@@ -60,7 +61,8 @@ process runSentieon
         tuple val(sample_id), path("*_markdup{.bam,.bam.bai}"), emit:bam_file_pair
     script:
 
-        """          
+        """  
+        set -euxo pipefail        
         echo "running ${reads[0]} ${reads[1]} ${reads[2]} ${reads[3]} "
         bash nextflow-bin/code_sentieon.sh $bwaIndex $fastaFile $fastaIndex $gatkResource ${reads[0]} ${reads[1]} ${reads[2]} ${reads[3]} 
         """
@@ -81,7 +83,7 @@ process untar {
     path "genome*", emit: genome
     """
     #!/bin/bash 
-
+    set -euxo pipefail
     bash nextflow-bin/untar.sh $fasta_index 
     """
 }
@@ -110,7 +112,7 @@ process picard {
 
     """
     #!/bin/bash 
-    
+    set -euxo pipefail
     echo 'the sample running is $sorted_bam'
     bash nextflow-bin/code_picard.sh $genome $sorted_bam $bedfile $run_CollectMultipleMetrics $run_CollectHsMetrics $run_CollectTargetedPcrMetrics $run_CollectRnaSeqMetris 
     """
@@ -133,6 +135,7 @@ process verifybamID {
     path "${reads[0].getBaseName()}/*.log"
     """
     #!/bin/bash 
+    set -euxo pipefail
     echo "now running ${reads[0]} and ${reads[1]}"
     
     bash nextflow-bin/code_verifybamid.sh $vcf_file ${reads[0]} ${reads[1]} 
@@ -156,7 +159,7 @@ process samtools {
     
     """
     #!/bin/bash 
-    
+    set -euxo pipefail
     nextflow-bin/samtools flagstat $bam >  "${bam.baseName}.flagstat" 
     
     """
@@ -222,7 +225,7 @@ process somalier_extract {
 
     """
     #!/bin/bash
-    
+    set -euxo pipefail
     tabix -p vcf ${vcf_ch}
     
     somalier extract --sites ${site_vcf} -f "${ref_file}" ${vcf_ch}
@@ -247,6 +250,7 @@ process get_ped {
 
     """
     #!/bin/bash
+    set -euxo pipefail
     python3 nextflow-bin/make_ped.py -a $somalier_extract_output
     
     """
@@ -272,7 +276,7 @@ process somalier_relate {
 
     """
     #!/bin/bash
-    
+    set -euxo pipefail
 
     somalier relate --ped ${ped_file} ${somalier_extract_output}
     """
@@ -297,6 +301,7 @@ process somalier_relate2multiqc {
     script:
 
     """
+    set -euxo pipefail
     python3 nextflow-bin/reformat.py -F ${female_threshold} -M ${male_threshold} -i ${som_samples_tsv}
     """
     
@@ -318,6 +323,7 @@ process get_ref_genome{
 
     """
     #!/bin/bash
+    set -euxo pipefail
     echo ${reads[0]}
     echo ${reads[1]}
     bash nextflow-bin/get_ref_build.sh ${reads[0]}
@@ -346,6 +352,7 @@ process MOSDEPTH {
 
     """
     #!/bin/bash
+    set -euxo pipefail
     echo ${reads[0]}
     echo ${reads[1]}
    
@@ -371,7 +378,7 @@ process vcf_qc {
     
     """
     #!/bin/bash 
-    
+    set -euxo pipefail
     python3 nextflow-bin/vcf_QC.py $vcf $bed > ${vcf.getBaseName()}.QC
     
     """
@@ -400,6 +407,7 @@ process happy{
 
     """
     #!/bin/bash
+    set -euxo pipefail
     echo "GIAB VCF - $query_vcf"
     gzip -d --force $ref_fasta
     tar -xvf $sdf_tar
@@ -420,6 +428,7 @@ process reppy{
     script:
 
     """
+    set -euxo pipefail
     python /app/benchmarking-tools/reporting/basic/bin/rep.py -o "${happy_roc.toString().split("\\_")[0]}_summary.html" "${happy_roc.toString().split("\\_")[0]}_vcfeval-hap.py":$happy_roc
   
     """
@@ -449,7 +458,7 @@ picard(untar.out.genome,runSentieon.out.sorted_bam,params.bedfile,params.run_Col
     vcf_qc(runSentieon.out.Haplotyper_vcf_gz,params.bed)
     MULTIQC(picard.out.tsv.mix(fastQC.out.fastqc_results,runSentieon.out.sentieon_multiqc,verifybamID.out.verifybamID_qc,samtools.out.samtools_flagstat,somalier_relate2multiqc.out.som_samples_tsv_multiqc).collect(),params.multiqc_config)
 
-happy(params.ref_fasta,params.reference_fasta_index,params.high_conf_bed,params.panel_bed,params.truth_vcf,runSentieon.out.Haplotyper_vcf_gz.collect().map{it -> (it.findAll{it.baseName.contains(params.genome_in_a_bottle)})},params.sdf_tar)
+happy(params.fastaFile,params.fastaIndex,params.high_conf_bed,params.panel_bed,params.truth_vcf,runSentieon.out.Haplotyper_vcf_gz.collect().map{it -> (it.findAll{it.baseName.contains(params.genome_in_a_bottle)})},params.sdf_tar)
     reppy(happy.out.happy_roc)
 
     if (params.calc_custom_coverage==true) {
